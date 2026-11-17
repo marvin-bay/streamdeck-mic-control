@@ -3,7 +3,7 @@
  * line-delimited JSON over stdin/stdout. If the helper dies unexpectedly it is restarted with backoff.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -49,6 +49,20 @@ export function helperPath(pluginDir: string): string {
 	return path.join(pluginDir, "bin", HELPER_BINARY);
 }
 
+/** `streamdeck pack` drops the executable bit, so an installed plugin has to restore it. */
+export function ensureExecutable(file: string, log: Logger): void {
+	try {
+		accessSync(file, constants.X_OK);
+	} catch {
+		try {
+			chmodSync(file, 0o755);
+			log.info(`made helper executable: ${file}`);
+		} catch (err) {
+			log.error(`could not make helper executable: ${String(err)}`);
+		}
+	}
+}
+
 export class Helper {
 	private proc: ChildProcessWithoutNullStreams | null = null;
 	private stopped = false;
@@ -74,6 +88,7 @@ export class Helper {
 			this.onEvent({ evt: "exit", code: null });
 			return;
 		}
+		ensureExecutable(this.binary, this.log);
 		const proc = spawn(this.binary, [], { stdio: ["pipe", "pipe", "pipe"] });
 		this.proc = proc;
 		const startedAt = Date.now();

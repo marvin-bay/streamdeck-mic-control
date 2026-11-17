@@ -1,0 +1,305 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Mic Control</title>
+	<style>
+		:root { color-scheme: dark; }
+		body {
+			margin: 0; padding: 8px 10px 12px; background: #2d2d2d; color: #d8d8d8;
+			font: 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+		}
+		.row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+		.row.top { align-items: start; }
+		.title { color: #9a9a9a; text-align: right; }
+		select, input[type="number"] {
+			width: 100%; box-sizing: border-box; background: #3d3d3d; color: #d8d8d8;
+			border: 1px solid #4a4a4a; border-radius: 3px; padding: 3px 5px; font: inherit;
+		}
+		input[type="number"] { width: 70px; }
+		.inline { display: flex; align-items: center; gap: 6px; }
+		button {
+			background: #3d3d3d; color: #d8d8d8; border: 1px solid #555; border-radius: 3px;
+			padding: 3px 8px; font: inherit; cursor: pointer;
+		}
+		button:hover { background: #484848; }
+		.hint { color: #9a9a9a; font-size: 11px; line-height: 1.4; }
+		.warn { color: #f5a623; }
+		.hidden { display: none !important; }
+		.icons { display: flex; flex-wrap: wrap; gap: 6px; }
+		.icon {
+			width: 46px; height: 46px; padding: 0; border: 2px solid transparent; border-radius: 6px;
+			background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center;
+		}
+		.icon img { width: 42px; height: 42px; display: block; }
+		.icon.selected { border-color: #2ea8ff; }
+		.icon .plus { font-size: 20px; color: #9a9a9a; }
+	</style>
+</head>
+<body>
+	<div class="row">
+		<label class="title" for="device" data-t="device"></label>
+		<div class="inline">
+			<select id="device"></select>
+			<button id="refresh" data-t-title="refresh">↻</button>
+		</div>
+	</div>
+	<div class="row top">
+		<span class="title" data-t="icon"></span>
+		<div>
+			<div class="icons" id="icons"></div>
+			<input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" />
+			<div class="hint" id="customHint" data-t="customHint"></div>
+		</div>
+	</div>
+	<div class="row">
+		<label class="title" for="defaultLevel" data-t="defaultLevel"></label>
+		<div class="inline"><input id="defaultLevel" type="number" min="1" max="100" step="1" /> %</div>
+	</div>
+	<div class="row">
+		<label class="title" for="showPercent" data-t="showPercent"></label>
+		<div class="inline"><input id="showPercent" type="checkbox" /></div>
+	</div>
+	<div class="row">
+		<label class="title" for="shiftFive" data-t="shiftFive"></label>
+		<div class="inline"><input id="shiftFive" type="checkbox" /></div>
+	</div>
+	<div class="row hidden" id="access">
+		<span></span>
+		<div>
+			<div class="hint warn" data-t="accessMissing"></div>
+			<button id="grant" style="margin-top: 4px" data-t="grant"></button>
+		</div>
+	</div>
+	<div class="row">
+		<span></span>
+		<div class="hint" data-t="usage"></div>
+	</div>
+
+	<script>
+		const TEXT = {
+			en: {
+				device: "Input device",
+				refresh: "Reload device list",
+				systemDefault: "System default input",
+				currently: "currently",
+				notAdjustable: "not adjustable",
+				notConnected: "not connected",
+				icon: "Icon",
+				customHint: "+ = your own image (PNG/JPG/SVG, ideally transparent background).",
+				defaultLevel: "Level on unmute",
+				showPercent: "Show % while adjusting",
+				shiftFive: "Shift = ±5 %",
+				accessMissing: "Accessibility not granted – adjusting with arrow keys/scroll wheel is off. Mute and display still work.",
+				grant: "Grant Accessibility …",
+				usage: "Press: mute/unmute. Hold the key and use arrow up/down or the scroll wheel to change the level.",
+				iconNames: { mic: "Microphone", studio: "Studio mic", headset: "Headset", clip: "Clip-on transmitter", custom: "Custom image" },
+				imageError: "Could not read this image.",
+			},
+			de: {
+				device: "Eingabegerät",
+				refresh: "Geräteliste neu laden",
+				systemDefault: "Standard-Eingabegerät",
+				currently: "aktuell",
+				notAdjustable: "nicht regelbar",
+				notConnected: "nicht verbunden",
+				icon: "Symbol",
+				customHint: "+ = eigenes Bild (PNG/JPG/SVG, am besten mit transparentem Hintergrund).",
+				defaultLevel: "Pegel beim Unmute",
+				showPercent: "% beim Regeln zeigen",
+				shiftFive: "Shift = ±5 %",
+				accessMissing: "Bedienungshilfen nicht freigegeben – Regeln per Pfeiltasten/Mausrad ist aus. Mute und Anzeige funktionieren.",
+				grant: "Bedienungshilfen freigeben …",
+				usage: "Kurz drücken: Mute/Unmute. Taste halten und Pfeil hoch/runter oder Mausrad: Pegel ändern.",
+				iconNames: { mic: "Mikrofon", studio: "Studiomikrofon", headset: "Headset", clip: "Ansteck-Sender", custom: "Eigenes Bild" },
+				imageError: "Dieses Bild konnte nicht gelesen werden.",
+			},
+		};
+		const ICON_SETS = ["mic", "studio", "headset", "clip", "custom"];
+		let T = TEXT.en;
+		let ws, context, action, settings = {};
+		let state = { devices: [], current: null, trusted: null };
+		let previews = {};
+		const $ = (id) => document.getElementById(id);
+
+		function applyText() {
+			document.querySelectorAll("[data-t]").forEach((el) => (el.textContent = T[el.dataset.t]));
+			document.querySelectorAll("[data-t-title]").forEach((el) => (el.title = T[el.dataset.tTitle]));
+		}
+
+		function send(event, extra) {
+			if (ws && ws.readyState === 1) ws.send(JSON.stringify({ event, context, ...extra }));
+		}
+		const save = () => send("setSettings", { payload: settings });
+		const toPlugin = (payload) => send("sendToPlugin", { action, payload });
+
+		function renderForm() {
+			$("defaultLevel").value = settings.defaultLevel ?? 50;
+			$("showPercent").checked = settings.showPercent !== false;
+			$("shiftFive").checked = settings.shiftFive !== false;
+			renderIcons();
+		}
+
+		function renderDevices() {
+			const sel = $("device");
+			sel.innerHTML = "";
+			const add = (value, label, disabled) => {
+				const o = document.createElement("option");
+				o.value = value;
+				o.textContent = label;
+				o.disabled = !!disabled;
+				sel.appendChild(o);
+				return o;
+			};
+			const def = state.devices.find((d) => d.isDefault);
+			add("", T.systemDefault + (def ? ` (${T.currently}: ${def.name})` : ""));
+			let found = !settings.deviceUid;
+			for (const d of state.devices) {
+				add(d.uid, d.name + (d.adjustable ? "" : ` (${T.notAdjustable})`), !d.adjustable);
+				if (d.uid === settings.deviceUid) found = true;
+			}
+			if (!found) add(settings.deviceUid, `${settings.deviceName || settings.deviceUid} (${T.notConnected})`);
+			sel.value = settings.deviceUid || "";
+		}
+
+		function renderIcons() {
+			const box = $("icons");
+			box.innerHTML = "";
+			const current = settings.iconSet || "mic";
+			for (const set of ICON_SETS) {
+				const b = document.createElement("button");
+				b.className = "icon" + (set === current ? " selected" : "");
+				b.title = T.iconNames[set];
+				if (previews[set]) {
+					const img = document.createElement("img");
+					img.src = previews[set];
+					b.appendChild(img);
+				} else if (set === "custom") {
+					b.innerHTML = '<span class="plus">+</span>';
+				} else {
+					b.textContent = "…";
+				}
+				b.addEventListener("click", () => {
+					if (set === "custom") {
+						$("file").click();
+						return;
+					}
+					settings.iconSet = set;
+					save();
+					renderIcons();
+				});
+				box.appendChild(b);
+			}
+		}
+
+		/** Loads an image file and produces two 120 px PNGs: live, and muted (grey, 50 % darker). */
+		function prepareImage(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onerror = reject;
+				reader.onload = () => {
+					const img = new Image();
+					img.onerror = reject;
+					img.onload = () => {
+						const max = 120;
+						const w0 = img.naturalWidth || max, h0 = img.naturalHeight || max;
+						const s = Math.min(max / w0, max / h0);
+						const w = Math.max(1, Math.round(w0 * s)), h = Math.max(1, Math.round(h0 * s));
+						const canvas = document.createElement("canvas");
+						canvas.width = w;
+						canvas.height = h;
+						const ctx = canvas.getContext("2d");
+						ctx.imageSmoothingQuality = "high";
+						ctx.drawImage(img, 0, 0, w, h);
+						const live = canvas.toDataURL("image/png");
+						const data = ctx.getImageData(0, 0, w, h);
+						const p = data.data;
+						for (let i = 0; i < p.length; i += 4) {
+							const l = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) * 0.5;
+							p[i] = p[i + 1] = p[i + 2] = l;
+						}
+						ctx.putImageData(data, 0, 0);
+						resolve({ live, muted: canvas.toDataURL("image/png") });
+					};
+					img.src = reader.result;
+				};
+				reader.readAsDataURL(file);
+			});
+		}
+
+		$("file").addEventListener("change", async (e) => {
+			const file = e.target.files && e.target.files[0];
+			e.target.value = "";
+			if (!file) return;
+			try {
+				settings.customImage = await prepareImage(file);
+				settings.iconSet = "custom";
+				previews.custom = settings.customImage.live;
+				save();
+				renderIcons();
+				toPlugin({ event: "listDevices" }); // also refreshes the rendered previews
+			} catch {
+				alert(T.imageError);
+			}
+		});
+		$("device").addEventListener("change", (e) => {
+			const uid = e.target.value;
+			settings.deviceUid = uid || undefined;
+			const d = state.devices.find((x) => x.uid === uid);
+			settings.deviceName = d ? d.name : undefined;
+			save();
+		});
+		$("defaultLevel").addEventListener("change", (e) => {
+			const v = Math.round(Number(e.target.value));
+			settings.defaultLevel = Number.isFinite(v) ? Math.min(100, Math.max(1, v)) : 50;
+			e.target.value = settings.defaultLevel;
+			save();
+		});
+		$("showPercent").addEventListener("change", (e) => { settings.showPercent = e.target.checked; save(); });
+		$("shiftFive").addEventListener("change", (e) => { settings.shiftFive = e.target.checked; save(); });
+		$("refresh").addEventListener("click", () => toPlugin({ event: "listDevices" }));
+		$("grant").addEventListener("click", () => toPlugin({ event: "requestAccess" }));
+
+		// Called by Stream Deck.
+		window.connectElgatoStreamDeckSocket = function (port, uuid, registerEvent, info, actionInfo) {
+			context = uuid;
+			try {
+				const lang = (JSON.parse(info).application.language || "en").slice(0, 2);
+				T = TEXT[lang] || TEXT.en;
+				document.documentElement.lang = lang;
+			} catch {}
+			applyText();
+			const ai = JSON.parse(actionInfo);
+			action = ai.action;
+			settings = (ai.payload && ai.payload.settings) || {};
+			renderForm();
+			renderDevices();
+
+			ws = new WebSocket("ws://127.0.0.1:" + port);
+			ws.onopen = () => {
+				ws.send(JSON.stringify({ event: registerEvent, uuid }));
+				toPlugin({ event: "listDevices" });
+			};
+			ws.onmessage = (msg) => {
+				const data = JSON.parse(msg.data);
+				if (data.event === "didReceiveSettings") {
+					settings = (data.payload && data.payload.settings) || {};
+					renderForm();
+					renderDevices();
+				} else if (data.event === "sendToPropertyInspector") {
+					const p = data.payload || {};
+					if (p.event === "state") {
+						state = { devices: p.devices || [], current: p.current, trusted: p.trusted };
+						renderDevices();
+						$("access").classList.toggle("hidden", state.trusted !== false);
+					} else if (p.event === "previews") {
+						previews = p.previews || {};
+						if (!previews.custom && settings.customImage) previews.custom = settings.customImage.live;
+						renderIcons();
+					}
+				}
+			};
+		};
+	</script>
+</body>
+</html>

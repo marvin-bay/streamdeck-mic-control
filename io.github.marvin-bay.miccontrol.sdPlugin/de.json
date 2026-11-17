@@ -1,0 +1,9 @@
+{
+	"Name": "Mic Control",
+	"Description": "Mikrofon auf Systemebene stummschalten und den Eingangspegel regeln, mit Pegelring auf der Taste.",
+	"Category": "Mic Control",
+	"io.github.marvin-bay.miccontrol.mic": {
+		"Name": "Mic Control",
+		"Tooltip": "Drücken: Mute/Unmute. Halten + Pfeil hoch/runter oder Mausrad: Eingangspegel regeln."
+	}
+}

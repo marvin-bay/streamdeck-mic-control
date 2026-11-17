@@ -1,0 +1,47 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Mic Control",
+	"Version": "1.0.0.0",
+	"Author": "Marvin Bay",
+	"Description": "Mute and adjust the input level of any microphone at system level, with a level ring on the key.",
+	"URL": "https://github.com/marvin-bay/streamdeck-mic-control",
+	"UUID": "io.github.marvin-bay.miccontrol",
+	"Icon": "imgs/plugin",
+	"Category": "Mic Control",
+	"CategoryIcon": "imgs/category",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "13"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"Actions": [
+		{
+			"Name": "Mic Control",
+			"UUID": "io.github.marvin-bay.miccontrol.mic",
+			"Icon": "imgs/action",
+			"Tooltip": "Press: mute/unmute. Hold + arrow up/down or scroll wheel: adjust the input level.",
+			"Controllers": [
+				"Keypad"
+			],
+			"PropertyInspectorPath": "ui/mic-control.html",
+			"SupportedInMultiActions": false,
+			"UserTitleEnabled": false,
+			"States": [
+				{
+					"Image": "imgs/key",
+					"ShowTitle": false
+				}
+			]
+		}
+	]
+}

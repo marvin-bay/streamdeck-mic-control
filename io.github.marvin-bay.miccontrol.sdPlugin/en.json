@@ -1,0 +1,9 @@
+{
+	"Name": "Mic Control",
+	"Description": "Mute and adjust the input level of any microphone at system level, with a level ring on the key.",
+	"Category": "Mic Control",
+	"io.github.marvin-bay.miccontrol.mic": {
+		"Name": "Mic Control",
+		"Tooltip": "Press: mute/unmute. Hold + arrow up/down or scroll wheel: adjust the input level."
+	}
+}
